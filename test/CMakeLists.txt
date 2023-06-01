@@ -1,0 +1,7 @@
+add_executable(main main.cpp)
+add_executable(t1 t1.cpp)
+add_executable(pc_oper pc_operator.cpp)
+target_compile_options(main PRIVATE -Wall -Wextra -pedantic )
+target_link_libraries(main  ${third_library})
+target_link_libraries(t1  ${third_library})
+target_link_libraries(pc_oper  ${third_library})
