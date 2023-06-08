@@ -76,7 +76,7 @@ int main(int argc, char *argv[])
     FLAGS_colorlogtostderr = true;
 
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
-    pcl::io::loadPCDFile<pcl::PointXYZRGB>("/home/eunll0/Desktop/work/0421/rabbit.pcd", *cloud);
+    pcl::io::loadPCDFile<pcl::PointXYZRGB>("../rabbit.pcd", *cloud);
     // pcl::io::loadPCDFile<pcl::PointXYZ>("/home/bay/Desktop/work/map.pcd", *cloud);
 
 #ifdef _pclshow
