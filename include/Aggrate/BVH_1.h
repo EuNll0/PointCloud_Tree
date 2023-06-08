@@ -7,7 +7,6 @@
 #include <sstream>
 #include <string>
 
-
 struct BucketInfo
 {
     int count = 0;
@@ -76,14 +75,14 @@ public:
         MemoryArena area(MemorySize * 1024 * 1024);
         BVHBuildNode *root;
         std::vector<std::pair<uint, Point3<float> *>> pointInfo;
-        pointInfo.reserve(_pointcloud.size());
+        pointInfo.resize(_pointcloud.size());
 
         for (uint i = 0; i < pointcloud.size(); i++)
         {
-            pointInfo.push_back(std::make_pair(i, &pointcloud[i]));
+            pointInfo[i] = std::make_pair(i, &pointcloud[i]);
         }
 
-        orderdata.reserve(pointInfo.size());
+        orderdata.resize(pointInfo.size());
         uint offset = 0;
         root = recursiveBuild(area, 0, pointInfo.size(), pointInfo, &totalNodes);
         nodes = AllocAligned<LinearBVHNode>(totalNodes);
