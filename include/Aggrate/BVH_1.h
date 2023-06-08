@@ -7,6 +7,7 @@
 #include <sstream>
 #include <string>
 
+
 struct BucketInfo
 {
     int count = 0;
@@ -64,8 +65,8 @@ public:
     const double _voxel_length;
     const double _minBoundLength;
 
-    SplitMethod _method;
-    LinearBVHNode *nodes;
+    const SplitMethod _method;
+    LinearBVHNode *nodes = nullptr;
     std::vector<Point3<float>> &_pointcloud;
     std::vector<uint> orderdata;
     uint totalNodes = 0;
@@ -76,10 +77,12 @@ public:
         BVHBuildNode *root;
         std::vector<std::pair<uint, Point3<float> *>> pointInfo;
         pointInfo.reserve(_pointcloud.size());
+
         for (uint i = 0; i < pointcloud.size(); i++)
         {
             pointInfo.push_back(std::make_pair(i, &pointcloud[i]));
         }
+
         orderdata.reserve(pointInfo.size());
         uint offset = 0;
         root = recursiveBuild(area, 0, pointInfo.size(), pointInfo, &totalNodes);
@@ -179,7 +182,7 @@ public:
         uint nodesToVisit[1024] = {0};
         nodesToVisit[0] = 0;
         uint toVisitOffset = 1, currentNodeIndex = 0;
-        uint leftnode_index = 1, rightnode_index = nodes->secondChildOffset;
+        uint leftnode_index = 1, rightnode_index;
 
         while (toVisitOffset != 0)
         {
@@ -266,7 +269,7 @@ public:
 
     void GetPointsFromNode(uint position, std::vector<uint> &ret)
     {
-        if(position < 0 || position >totalNodes)
+        if (position < 0 || position > totalNodes)
         {
             return;
         }
@@ -330,52 +333,50 @@ private:
         xmin = ymin = zmin = std::numeric_limits<float>::max();
         xmax = ymax = zmax = -std::numeric_limits<float>::max();
 
-        float sumx = 0, sumy = 0, sumz = 0;
+        // float sumx = 0, sumy = 0, sumz = 0;
         for (uint i = start; i < end; i++)
         {
             Point3<float> &p = *pointInfo[i].second;
-            sumx += p.x;
-            sumy += p.y;
-            sumz += p.z;
             xmin = std::min(xmin, p.x);
             ymin = std::min(ymin, p.y);
             zmin = std::min(zmin, p.z);
             xmax = std::max(xmax, p.x);
             ymax = std::max(ymax, p.y);
             zmax = std::max(zmax, p.z);
+            // sumx += p.x;
+            // sumy += p.y;
+            // sumz += p.z;
         }
 
-        
-        sumx /= (end-start);
-        sumy /= (end-start);
-        sumz /= (end-start);
-        float corx = 0,cory=0,corz=0;
-        for (uint i = start; i < end; i++)
-        {
-            Point3<float> &p = *pointInfo[i].second;
-            corx += (p.x - sumx) * (p.x - sumx) ;
-            cory += (p.y - sumy) * (p.y - sumy) ;
-            corz += (p.z - sumz) * (p.z - sumz) ;
-        }
-        if(corx >= cory && cory >= corz) {dim = 0;}
-        else if(cory >= corz ) {dim = 1;}
-        else  {dim = 2;}
-      
+        // sumx /= (end-start);
+        // sumy /= (end-start);
+        // sumz /= (end-start);
+        // float corx = 0,cory=0,corz=0;
+        // for (uint i = start; i < end; i++)
+        // {
+        //     Point3<float> &p = *pointInfo[i].second;
+        //     corx += (p.x - sumx) * (p.x - sumx) ;
+        //     cory += (p.y - sumy) * (p.y - sumy) ;
+        //     corz += (p.z - sumz) * (p.z - sumz) ;
+        // }
+        // if(corx >= cory && cory >= corz) {dim = 0;}
+        // else if(cory >= corz ) {dim = 1;}
+        // else  {dim = 2;}
 
         Bounds3<float> bounds(Point3<float>(xmin, ymin, zmin), Point3<float>(xmax, ymax, zmax));
-        bounds.pMax.x += _voxel_length;
-        bounds.pMax.y += _voxel_length;
-        bounds.pMax.z += _voxel_length;
-        bounds.pMin.x -= _voxel_length;
-        bounds.pMin.y -= _voxel_length;
-        bounds.pMin.z -= _voxel_length;
 
-        // dim = bounds.MaximumExtent();
+        dim = bounds.MaximumExtent();
 
         int mid = (start + end) / 2;
         auto &&diagonal = (bounds.Diagonal());
         if (diagonal.x < _minBoundLength && diagonal.y < _minBoundLength && diagonal.z < _minBoundLength)
         {
+            bounds.pMax.x += _voxel_length;
+            bounds.pMax.y += _voxel_length;
+            bounds.pMax.z += _voxel_length;
+            bounds.pMin.x -= _voxel_length;
+            bounds.pMin.y -= _voxel_length;
+            bounds.pMin.z -= _voxel_length;
             uint firstposition = orderdata.size();
             for (uint i = start; i < end; i++)
             {
@@ -387,6 +388,12 @@ private:
 
         else if (end - start == 1)
         {
+            bounds.pMax.x += _voxel_length;
+            bounds.pMax.y += _voxel_length;
+            bounds.pMax.z += _voxel_length;
+            bounds.pMin.x -= _voxel_length;
+            bounds.pMin.y -= _voxel_length;
+            bounds.pMin.z -= _voxel_length;
             uint firstposition = orderdata.size();
             for (uint i = start; i < end; i++)
             {
