@@ -32,8 +32,8 @@ struct BVHBuildNode
     {
         children[0] = c0;
         children[1] = c1;
-        // CHECK(c0->bounds != nullptr);
-        // CHECK(c1->bounds != nullptr);
+        // DCHECK(c0->bounds != nullptr);
+        // DCHECK(c1->bounds != nullptr);
         bounds = std::move(Union(c0->bounds, c1->bounds));
         splitAxis = axis;
         nPrimitives = 0;
@@ -57,7 +57,7 @@ class BVH_ACC1
 public:
     enum class SplitMethod
     {
-        // SAH,
+        SAH,
         Middle,
         EqualCounts
     };
@@ -70,13 +70,18 @@ public:
     std::vector<uint> orderdata;
     uint totalNodes = 0;
 
-    BVH_ACC1(std::vector<Point3<float>> &pointcloud, double voxel_length = 0.5, double minBoundLength = 1, SplitMethod method = SplitMethod::Middle, uint MemorySize = 128) : _pointcloud(pointcloud), _method(method), _voxel_length(voxel_length / 2.), _minBoundLength(minBoundLength)
+    BVH_ACC1(std::vector<Point3<float>> &pointcloud, double voxel_length = 0.5, double minBoundLength = 1,
+             SplitMethod method = SplitMethod::Middle, uint MemorySize = 128) : _pointcloud(pointcloud), _method(method),
+                                                                                _voxel_length(voxel_length / 2.), _minBoundLength(minBoundLength)
     {
+        LOG(INFO) << "Begin to build the tree";
         MemoryArena area(MemorySize * 1024 * 1024);
         BVHBuildNode *root;
         std::vector<uint> pointInfo;
         pointInfo.resize(_pointcloud.size());
+        // uint *p = new uint[_pointcloud.size()];
 
+        // #   pragma omp parallel for
         for (uint i = 0; i < pointcloud.size(); i++)
         {
             pointInfo[i] = i;
@@ -84,7 +89,14 @@ public:
 
         orderdata.resize(pointInfo.size());
         uint offset = 0;
-        root = recursiveBuild(area, 0, pointInfo.size(), pointInfo, &totalNodes);
+        if (method == SplitMethod::SAH)
+        {
+            root = recursiveBuild_SAH(area, 0, pointInfo.size(), pointInfo, &totalNodes);
+        }
+        else
+        {
+            root = recursiveBuild(area, 0, pointInfo.size(), pointInfo, &totalNodes);
+        }
         nodes = AllocAligned<LinearBVHNode>(totalNodes);
         flattenBVHTree(root, &offset);
         char output[1024];
@@ -96,7 +108,8 @@ public:
                 float(area.TotalAllocated()) /
                     (1024.f * 1024.f));
         LOG(INFO) << std::string(output);
-        CHECK_EQ(totalNodes, offset);
+        // delete p;
+        DCHECK_EQ(totalNodes, offset);
     }
 
     ~BVH_ACC1()
@@ -120,7 +133,7 @@ public:
             LinearBVHNode *node = &nodes[currentNodeIndex];
             if (node->nPrimitives > 0)
             {
-                DLOG(INFO) << "Check with leave!";
+                DLOG(INFO) << "DCHECK with leave!";
                 ret_nodes.push_back(currentNodeIndex);
                 currentdepth++;
                 if (currentdepth == depth)
@@ -162,11 +175,11 @@ public:
                         nodesToVisit[++toVisitOffset] = leftnode_index;
                         nodesToVisit[++toVisitOffset] = rightnode_index;
                     }
-                    DLOG(INFO) << "Check all intersect:  " << leftnode_index << "\t" << rightnode_index;
+                    DLOG(INFO) << "DCHECK all intersect:  " << leftnode_index << "\t" << rightnode_index;
                 }
 
-                DLOG(INFO) << "currentNodeIndex is " << currentNodeIndex << "\t the node status:\t" << leftInsect << "\t" << rightInsect;
-                DLOG(INFO) << "To visit offset is  " << toVisitOffset << "\n";
+                // DLOG(INFO) << "currentNodeIndex is " << currentNodeIndex << "\t the node status:\t" << leftInsect << "\t" << rightInsect;
+                // DLOG(INFO) << "To visit offset is  " << toVisitOffset << "\n";
             }
             currentNodeIndex = nodesToVisit[toVisitOffset--];
         }
@@ -188,7 +201,7 @@ public:
             const LinearBVHNode *node = &nodes[currentNodeIndex];
             if (node->nPrimitives > 0)
             {
-                DLOG(INFO) << "Check with leave!";
+                DLOG(INFO) << "DCHECK with leave!";
                 ret_bounds.push_back(node->bounds);
                 currentdepth++;
                 if (currentdepth == depth)
@@ -232,7 +245,7 @@ public:
                         nodesToVisit[++toVisitOffset] = leftnode_index;
                         nodesToVisit[++toVisitOffset] = rightnode_index;
                     }
-                    DLOG(INFO) << "Check all intersect:  " << leftnode_index << "\t" << rightnode_index;
+                    DLOG(INFO) << "DCHECK all intersect:  " << leftnode_index << "\t" << rightnode_index;
                 }
 
                 DLOG(INFO) << "currentNodeIndex is " << currentNodeIndex << "\t the node status:\t" << leftInsect << "\t" << rightInsect;
@@ -273,7 +286,7 @@ public:
 
     void GetPointsFromNode(uint position, std::vector<uint> &ret)
     {
-        if (position < 0 || position > totalNodes)
+        if (position > totalNodes)
         {
             return;
         }
@@ -327,9 +340,9 @@ private:
     BVHBuildNode *recursiveBuild(MemoryArena &area, uint start, uint end, std::vector<uint> &pointInfo,
                                  uint *tatalnodes)
     {
-        // CHECK((*tatalnodes) < alloc_all_memory) << "NOT ENOUGH MEMORY!!!";
+        // DCHECK((*tatalnodes) < alloc_all_memory) << "NOT ENOUGH MEMORY!!!";
         BVHBuildNode *node = area.Alloc<BVHBuildNode>();
-        CHECK(end > start);
+        DCHECK(end > start);
         (*tatalnodes)++;
         int dim;
 
@@ -369,7 +382,7 @@ private:
 
         Bounds3<float> bounds(Point3<float>(xmin, ymin, zmin), Point3<float>(xmax, ymax, zmax));
         dim = bounds.MaximumExtent();
-
+        uint nPrimitives = end - start;
         int mid = (start + end) / 2;
         auto &&diagonal = (bounds.Diagonal());
         if (diagonal.x < _minBoundLength && diagonal.y < _minBoundLength && diagonal.z < _minBoundLength)
@@ -385,33 +398,17 @@ private:
             {
                 orderdata.push_back(pointInfo[i]);
             }
-            node->InitLeaf(firstposition, end - start, bounds);
+            node->InitLeaf(firstposition, nPrimitives, bounds);
             return node;
         }
 
-        //  if (end - start <= 2000)
-        // {
-        //     bounds.pMax.x += _voxel_length;
-        //     bounds.pMax.y += _voxel_length;
-        //     bounds.pMax.z += _voxel_length;
-        //     bounds.pMin.x -= _voxel_length;
-        //     bounds.pMin.y -= _voxel_length;
-        //     bounds.pMin.z -= _voxel_length;
-        //     uint firstposition = orderdata.size();
-        //     for (uint i = start; i < end; i++)
-        //     {
-        //         orderdata.push_back(pointInfo[i].first);
-        //     }
-        //     node->InitLeaf(firstposition, end - start, bounds);
-        //     return node;
-        // }
-        auto & pointcloud = _pointcloud;
+        auto &pointcloud = _pointcloud;
         switch (_method)
         {
         case SplitMethod::Middle:
         {
             float pmid = (bounds.pMax[dim] + bounds.pMin[dim]) / 2;
-            auto p = std::partition(&pointInfo[start], &pointInfo[end - 1] + 1, [dim, pmid,&pointcloud](const auto &pi)
+            auto p = std::partition(&pointInfo[start], &pointInfo[end - 1] + 1, [dim, pmid, &pointcloud](const auto &pi)
                                     { return (pointcloud[pi])[dim] < pmid; });
             mid = p - &pointInfo[0];
             // LOG(INFO) << "START MID END IS :   " << start << "\t" << mid << "\t" << end << "\t" << dim << "\n";
@@ -420,7 +417,7 @@ private:
         case SplitMethod::EqualCounts:
         {
             std::nth_element(&pointInfo[start], &pointInfo[mid], &pointInfo[end - 1] + 1,
-                             [dim,&pointcloud](const auto &a,const auto &b)
+                             [dim, &pointcloud](const auto &a, const auto &b)
                              { return (pointcloud[a])[dim] < (pointcloud[b])[dim]; });
             break;
         }
@@ -428,6 +425,111 @@ private:
         node->InitInterior(dim,
                            recursiveBuild(area, start, mid, pointInfo, tatalnodes),
                            recursiveBuild(area, mid, end, pointInfo, tatalnodes));
+        return node;
+    }
+
+    BVHBuildNode *recursiveBuild_SAH(MemoryArena &area, uint start, uint end, std::vector<uint> &info, uint *tatalnodes)
+    {
+        BVHBuildNode *node = area.Alloc<BVHBuildNode>();
+        DCHECK(end > start);
+        (*tatalnodes)++;
+        static float xmin, xmax, ymin, ymax, zmin, zmax;
+        xmin = ymin = zmin = std::numeric_limits<float>::max();
+        xmax = ymax = zmax = -std::numeric_limits<float>::max();
+
+        for (uint i = start; i < end; i++)
+        {
+            Point3<float> &p = _pointcloud[info[i]];
+            xmin = std::min(xmin, p.x);
+            ymin = std::min(ymin, p.y);
+            zmin = std::min(zmin, p.z);
+            xmax = std::max(xmax, p.x);
+            ymax = std::max(ymax, p.y);
+            zmax = std::max(zmax, p.z);
+        }
+        float min_tmp[3] = {xmin, ymin, zmin};
+        float max_tmp[3] = {xmax, ymax, zmax};
+
+        Bounds3<float> bounds(Point3<float>(xmin, ymin, zmin), Point3<float>(xmax, ymax, zmax));
+        auto &&diagonal = (bounds.Diagonal());
+        if (diagonal.x < _minBoundLength && diagonal.y < _minBoundLength && diagonal.z < _minBoundLength)
+        {
+            bounds.pMax.x += _voxel_length;
+            bounds.pMax.y += _voxel_length;
+            bounds.pMax.z += _voxel_length;
+            bounds.pMin.x -= _voxel_length;
+            bounds.pMin.y -= _voxel_length;
+            bounds.pMin.z -= _voxel_length;
+            uint firstposition = orderdata.size();
+            for (uint i = start; i < end; i++)
+            {
+                orderdata.push_back(info[i]);
+            }
+            node->InitLeaf(firstposition, end - start, bounds);
+            return node;
+        }
+
+        uint dim = bounds.MaximumExtent();
+
+        constexpr int nBuckets = 14;
+        BucketInfo buckets[nBuckets];
+
+        float tobetween0to1 = 1.f / (max_tmp[dim] - min_tmp[dim]);
+        for (uint i = start; i < end; i++)
+        {
+            int b = int(nBuckets * ((_pointcloud[info[i]][dim] - min_tmp[dim]) * tobetween0to1));
+            if (b == nBuckets)
+                b--;
+            DCHECK_GE(b, 0);
+            DCHECK_LT(b, nBuckets);
+            buckets[b].count++;
+            buckets[b].bounds = Union(buckets[b].bounds, _pointcloud[info[i]]);
+        }
+       
+        float cost[nBuckets - 1];
+        for (int i = 0; i < nBuckets-1; i++)
+        {
+            Bound3f b0, b1;
+            int count0 = 0, count1 = 0;
+            for (int j = 0; j <= i; j++)
+            {
+                b0 = Union(b0, buckets[j].bounds);
+                count0 += buckets[j].count;
+            }
+
+            for (int j = i + 1; j < nBuckets; j++)
+            {
+                b1 = Union(b1, buckets[j].bounds);
+                count1 += buckets[j].count;
+            }
+            cost[i] = (count0 * b0.SurfaceArea()) + (count1 * b1.SurfaceArea());
+        }
+
+        float mincost = cost[0];
+        int minCostSplitBucket = 0;
+        for (int i = 1; i < nBuckets - 1; i++)
+        {
+            if (cost[i] < mincost)
+            {
+                mincost = cost[i];
+                minCostSplitBucket = i;
+            }
+        }
+        // LOG(INFO)<<minCostSplitBucket;
+        auto p = std::partition(&(info[start]), &(info[end - 1]) + 1,
+                                [&](const auto &a)
+                                {
+                                    int b = nBuckets * (_pointcloud[a][dim] - min_tmp[dim])*tobetween0to1 ;
+                                    if (b == nBuckets)
+                                        b--;
+                                    return b <= minCostSplitBucket;
+                                    // return _pointcloud[a][dim] <pmid;
+                                });
+        int mid = p - &(info[0]);
+        // LOG(INFO) << "START MID END IS " << start << "\t" << mid << "\t" << end << "\n";
+        node->InitInterior(dim,
+                           recursiveBuild_SAH(area, mid, end, info, tatalnodes),
+                           recursiveBuild_SAH(area, start, mid, info, tatalnodes));
         return node;
     }
 };

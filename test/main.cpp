@@ -109,7 +109,7 @@ int main(int argc, char *argv[])
 
     pcl::PointXYZ o(1, 7, -2);
 
-    Point3d oo(o.x, o.y, o.z), dd(-3, 2, 5);
+    Point3f oo(o.x, o.y, o.z), dd(-3, 2, 5);
     dd.normalize();
     Ray ray(oo, dd);
     pcl::PointXYZ d = pcl::PointXYZ(o.x + 30 * dd.x, o.y + 30 * dd.y, o.z + 30 * dd.z);
