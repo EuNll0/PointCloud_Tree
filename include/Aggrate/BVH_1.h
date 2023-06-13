@@ -74,12 +74,12 @@ public:
     {
         MemoryArena area(MemorySize * 1024 * 1024);
         BVHBuildNode *root;
-        std::vector<std::pair<uint, Point3<float> *>> pointInfo;
+        std::vector<uint> pointInfo;
         pointInfo.resize(_pointcloud.size());
 
         for (uint i = 0; i < pointcloud.size(); i++)
         {
-            pointInfo[i] = std::make_pair(i, &pointcloud[i]);
+            pointInfo[i] = i;
         }
 
         orderdata.resize(pointInfo.size());
@@ -172,7 +172,7 @@ public:
         }
     }
 
-    bool IntersectPB(const Ray &ray, std::vector<Bounds3<float>> &ret_bounds, double scale = 1. + 2. * gamma(3)) const
+    bool IntersectPB(const Ray &ray, std::vector<Bounds3<float>> &ret_bounds, uint depth = 1, double scale = 1 + 2 * gamma(3)) const
     {
         if (!nodes)
             return false;
@@ -182,7 +182,7 @@ public:
         nodesToVisit[0] = 0;
         uint toVisitOffset = 1, currentNodeIndex = 0;
         uint leftnode_index = 1, rightnode_index;
-
+        uint currentdepth = 0;
         while (toVisitOffset != 0)
         {
             const LinearBVHNode *node = &nodes[currentNodeIndex];
@@ -190,6 +190,11 @@ public:
             {
                 DLOG(INFO) << "Check with leave!";
                 ret_bounds.push_back(node->bounds);
+                currentdepth++;
+                if (currentdepth == depth)
+                {
+                    break;
+                }
             }
             else
             {
@@ -319,7 +324,7 @@ private:
         return myOffset;
     }
 
-    BVHBuildNode *recursiveBuild(MemoryArena &area, uint start, uint end, std::vector<std::pair<uint, Point3<float> *>> &pointInfo,
+    BVHBuildNode *recursiveBuild(MemoryArena &area, uint start, uint end, std::vector<uint> &pointInfo,
                                  uint *tatalnodes)
     {
         // CHECK((*tatalnodes) < alloc_all_memory) << "NOT ENOUGH MEMORY!!!";
@@ -335,7 +340,7 @@ private:
         // float sumx = 0, sumy = 0, sumz = 0;
         for (uint i = start; i < end; i++)
         {
-            Point3<float> &p = *pointInfo[i].second;
+            Point3<float> &p = _pointcloud[pointInfo[i]];
             xmin = std::min(xmin, p.x);
             ymin = std::min(ymin, p.y);
             zmin = std::min(zmin, p.z);
@@ -363,7 +368,6 @@ private:
         // else  {dim = 2;}
 
         Bounds3<float> bounds(Point3<float>(xmin, ymin, zmin), Point3<float>(xmax, ymax, zmax));
-
         dim = bounds.MaximumExtent();
 
         int mid = (start + end) / 2;
@@ -379,44 +383,45 @@ private:
             uint firstposition = orderdata.size();
             for (uint i = start; i < end; i++)
             {
-                orderdata.push_back(pointInfo[i].first);
+                orderdata.push_back(pointInfo[i]);
             }
             node->InitLeaf(firstposition, end - start, bounds);
             return node;
         }
 
-        else if (end - start == 1)
-        {
-            bounds.pMax.x += _voxel_length;
-            bounds.pMax.y += _voxel_length;
-            bounds.pMax.z += _voxel_length;
-            bounds.pMin.x -= _voxel_length;
-            bounds.pMin.y -= _voxel_length;
-            bounds.pMin.z -= _voxel_length;
-            uint firstposition = orderdata.size();
-            for (uint i = start; i < end; i++)
-            {
-                orderdata.push_back(pointInfo[i].first);
-            }
-            node->InitLeaf(firstposition, end - start, bounds);
-            return node;
-        }
-
+        //  if (end - start <= 2000)
+        // {
+        //     bounds.pMax.x += _voxel_length;
+        //     bounds.pMax.y += _voxel_length;
+        //     bounds.pMax.z += _voxel_length;
+        //     bounds.pMin.x -= _voxel_length;
+        //     bounds.pMin.y -= _voxel_length;
+        //     bounds.pMin.z -= _voxel_length;
+        //     uint firstposition = orderdata.size();
+        //     for (uint i = start; i < end; i++)
+        //     {
+        //         orderdata.push_back(pointInfo[i].first);
+        //     }
+        //     node->InitLeaf(firstposition, end - start, bounds);
+        //     return node;
+        // }
+        auto & pointcloud = _pointcloud;
         switch (_method)
         {
         case SplitMethod::Middle:
         {
-            double pmid = (bounds.pMax[dim] + bounds.pMin[dim]) / 2;
-            auto p = std::partition(&pointInfo[start], &pointInfo[end - 1] + 1, [dim, pmid](const auto &pi)
-                                    { return (*pi.second)[dim] < pmid; });
+            float pmid = (bounds.pMax[dim] + bounds.pMin[dim]) / 2;
+            auto p = std::partition(&pointInfo[start], &pointInfo[end - 1] + 1, [dim, pmid,&pointcloud](const auto &pi)
+                                    { return (pointcloud[pi])[dim] < pmid; });
             mid = p - &pointInfo[0];
+            // LOG(INFO) << "START MID END IS :   " << start << "\t" << mid << "\t" << end << "\t" << dim << "\n";
             break;
         }
         case SplitMethod::EqualCounts:
         {
             std::nth_element(&pointInfo[start], &pointInfo[mid], &pointInfo[end - 1] + 1,
-                             [dim](const std::pair<uint, Point3f *> &a, const std::pair<uint, Point3f *> &b)
-                             { return (*a.second)[dim] < (*b.second)[dim]; });
+                             [dim,&pointcloud](const auto &a,const auto &b)
+                             { return (pointcloud[a])[dim] < (pointcloud[b])[dim]; });
             break;
         }
         }
