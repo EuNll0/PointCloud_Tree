@@ -108,9 +108,9 @@ public:
     explicit Bounds3(const Point3<T> &p) : pMin(p), pMax(p) {}
     // inline bool Bounds3<T>::IntersectPP(const Ray &ray, const Point3d &invDir) const;
     inline bool IntersectP(const Ray &ray, const Point3d &invDir,
-                           const int dirIsNeg[3], double scale = 1 + 2. * gamma(3)) const;
-   inline double IntersectPD(const Ray &ray, const Point3d &invDir,
-                                     const int dirIsNeg[3],const double& scale) const;
+                           const int dirIsNeg[3], const float& scale ) const;
+   inline float IntersectPD(const Ray &ray, const Point3d &invDir,
+                                     const int dirIsNeg[3],const float& scale) const;
         Bounds3(const Point3<T> &p1, const Point3<T> &p2)
         : pMin(std::min(p1.x, p2.x), std::min(p1.y, p2.y),
                std::min(p1.z, p2.z)),
@@ -228,14 +228,14 @@ Bounds3<T> Union(const Bounds3<T> &b1, const Bounds3<T> &b2)
 
 template <typename T>
 inline bool Bounds3<T>::IntersectP(const Ray &ray, const Point3d &invDir,
-                                   const int dirIsNeg[3], double scale) const
+                                   const int dirIsNeg[3], const float &scale) const
 {
-    const Bounds3<T> &bounds = *this;
+     const Bounds3<T> &bounds = *this;
     // Check for ray intersection against $x$ and $y$ slabs
-    double tMin = (bounds[dirIsNeg[0]].x - ray.o.x) * invDir.x;
-    double tMax = (bounds[1 - dirIsNeg[0]].x - ray.o.x) * invDir.x;
-    double tyMin = (bounds[dirIsNeg[1]].y - ray.o.y) * invDir.y;
-    double tyMax = (bounds[1 - dirIsNeg[1]].y - ray.o.y) * invDir.y;
+    float tMin = (bounds[dirIsNeg[0]].x - ray.o.x) * invDir.x;
+    float tMax = (bounds[1 - dirIsNeg[0]].x - ray.o.x) * invDir.x;
+    float tyMin = (bounds[dirIsNeg[1]].y - ray.o.y) * invDir.y;
+    float tyMax = (bounds[1 - dirIsNeg[1]].y - ray.o.y) * invDir.y;
 
     tMax *= scale;
     tyMax *= scale;
@@ -247,8 +247,8 @@ inline bool Bounds3<T>::IntersectP(const Ray &ray, const Point3d &invDir,
         tMax = tyMax;
 
     // Check for ray intersection against $z$ slab
-    double tzMin = (bounds[dirIsNeg[2]].z - ray.o.z) * invDir.z;
-    double tzMax = (bounds[1 - dirIsNeg[2]].z - ray.o.z) * invDir.z;
+    float tzMin = (bounds[dirIsNeg[2]].z - ray.o.z) * invDir.z;
+    float tzMax = (bounds[1 - dirIsNeg[2]].z - ray.o.z) * invDir.z;
 
     tzMax *= scale;
     if (tMin > tzMax || tzMin > tMax)
@@ -257,19 +257,19 @@ inline bool Bounds3<T>::IntersectP(const Ray &ray, const Point3d &invDir,
         tMin = tzMin;
     if (tzMax < tMax)
         tMax = tzMax;
-    return (tMax > 0);
+    return tMax>0;
 }
 
 template <typename T>
-inline double Bounds3<T>::IntersectPD(const Ray &ray, const Point3d &invDir,
-                                     const int dirIsNeg[3],const double& scale) const
+inline float Bounds3<T>::IntersectPD(const Ray &ray, const Point3d &invDir,
+                                     const int dirIsNeg[3],const float& scale) const
 {
     const Bounds3<T> &bounds = *this;
     // Check for ray intersection against $x$ and $y$ slabs
-    double tMin = (bounds[dirIsNeg[0]].x - ray.o.x) * invDir.x;
-    double tMax = (bounds[1 - dirIsNeg[0]].x - ray.o.x) * invDir.x;
-    double tyMin = (bounds[dirIsNeg[1]].y - ray.o.y) * invDir.y;
-    double tyMax = (bounds[1 - dirIsNeg[1]].y - ray.o.y) * invDir.y;
+    float tMin = (bounds[dirIsNeg[0]].x - ray.o.x) * invDir.x;
+    float tMax = (bounds[1 - dirIsNeg[0]].x - ray.o.x) * invDir.x;
+    float tyMin = (bounds[dirIsNeg[1]].y - ray.o.y) * invDir.y;
+    float tyMax = (bounds[1 - dirIsNeg[1]].y - ray.o.y) * invDir.y;
 
     tMax *= scale;
     tyMax *= scale;
@@ -281,8 +281,8 @@ inline double Bounds3<T>::IntersectPD(const Ray &ray, const Point3d &invDir,
         tMax = tyMax;
 
     // Check for ray intersection against $z$ slab
-    double tzMin = (bounds[dirIsNeg[2]].z - ray.o.z) * invDir.z;
-    double tzMax = (bounds[1 - dirIsNeg[2]].z - ray.o.z) * invDir.z;
+    float tzMin = (bounds[dirIsNeg[2]].z - ray.o.z) * invDir.z;
+    float tzMax = (bounds[1 - dirIsNeg[2]].z - ray.o.z) * invDir.z;
 
     // Update _tzMax_ to ensure robust bounds intersection
     // tzMax *= 1 + 2. * gamma(3);
