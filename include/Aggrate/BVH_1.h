@@ -15,7 +15,7 @@ struct BucketInfo
 
 struct BVHBuildNode
 {
-    int i;
+    bool is_only;
     Bounds3<float> bounds;
     BVHBuildNode *children[2];
     int splitAxis, firstPrimOffset, nPrimitives;
@@ -63,6 +63,7 @@ public:
     };
     const double _voxel_length;
     const double _minBoundLength;
+    const int nBuckets = 14;
 
     const SplitMethod _method;
     LinearBVHNode *nodes = nullptr;
@@ -117,7 +118,7 @@ public:
         FreeAligned(nodes);
     };
 
-    void IntersectP(const Ray &ray, std::vector<uint> &ret_nodes, uint depth = 1, double scale = 1 + 2 * gamma(3))
+    void IntersectP(const Ray &ray, std::vector<uint> &ret_pointIndex, uint depth = 1, double scale = 1 + 2 * gamma(3))
     {
         if (!nodes)
             return;
@@ -133,9 +134,32 @@ public:
             LinearBVHNode *node = &nodes[currentNodeIndex];
             if (node->nPrimitives > 0)
             {
-                DLOG(INFO) << "DCHECK with leave!";
-                ret_nodes.push_back(currentNodeIndex);
-                currentdepth++;
+                uint block = 0;
+                DLOG(INFO) << "DCHECK with leave!"
+                           << "\t" << int(node->pad[0]);
+                if (node->pad[0])
+                {
+                    for (int i = 0; i < node->nPrimitives; i++)
+                    {
+                        auto tmp = orderdata[i+node->primitivesOffset];
+                        auto &point = _pointcloud[tmp];
+                        auto vx = Point3f(_voxel_length, _voxel_length, _voxel_length);
+                        if (Bound3f(point - vx, point + vx).IntersectP(ray, invDir, dirIsNeg, scale))
+                        {
+                            ret_pointIndex.push_back(tmp);
+                            block++;
+                        }
+                    }
+                }
+                else
+                {
+                    for (int i = 0; i < node->nPrimitives; i++)
+                    {
+                        ret_pointIndex.push_back(orderdata[i + node->primitivesOffset]);
+                    }
+                }
+                if (block > 0)
+                    currentdepth++;
                 if (currentdepth == depth)
                 {
                     break;
@@ -201,9 +225,30 @@ public:
             const LinearBVHNode *node = &nodes[currentNodeIndex];
             if (node->nPrimitives > 0)
             {
-                DLOG(INFO) << "DCHECK with leave!";
-                ret_bounds.push_back(node->bounds);
-                currentdepth++;
+                DLOG(INFO) << "DCHECK with leave!"
+                           << "\t" << int(node->pad[0]);
+                uint block = 0;
+                if (node->pad[0])
+                {
+                    for (int i = 0; i < node->nPrimitives; i++)
+                    {
+                        auto tmp = orderdata[i+node->primitivesOffset];
+                        auto &point = _pointcloud[tmp];
+                        auto vx = Point3f(_voxel_length, _voxel_length, _voxel_length);
+                        auto voxel = Bound3f(point - vx, point + vx);
+                        if (voxel.IntersectP(ray, invDir, dirIsNeg, scale))
+                        {
+                            ret_bounds.push_back(voxel);
+                            block++;
+                        }
+                    }
+                }
+                else
+                {
+                    ret_bounds.push_back(node->bounds);
+                }
+                if (block > 0)
+                    currentdepth++;
                 if (currentdepth == depth)
                 {
                     break;
@@ -216,8 +261,8 @@ public:
 
                 const LinearBVHNode *leftnode = &nodes[leftnode_index];
                 const LinearBVHNode *rightnode = &nodes[rightnode_index];
-                ret_bounds.push_back(leftnode->bounds);
-                ret_bounds.push_back(rightnode->bounds);
+                // ret_bounds.push_back(leftnode->bounds);
+                // ret_bounds.push_back(rightnode->bounds);
 
                 double leftInsect_ = leftnode->bounds.IntersectPD(ray, invDir, dirIsNeg, scale);
                 double rightInsect_ = rightnode->bounds.IntersectPD(ray, invDir, dirIsNeg, scale);
@@ -245,11 +290,11 @@ public:
                         nodesToVisit[++toVisitOffset] = leftnode_index;
                         nodesToVisit[++toVisitOffset] = rightnode_index;
                     }
-                    DLOG(INFO) << "DCHECK all intersect:  " << leftnode_index << "\t" << rightnode_index;
+                    // DLOG(INFO) << "DCHECK all intersect:  " << leftnode_index << "\t" << rightnode_index;
                 }
 
-                DLOG(INFO) << "currentNodeIndex is " << currentNodeIndex << "\t the node status:\t" << leftInsect << "\t" << rightInsect;
-                DLOG(INFO) << "To visit offset is  " << toVisitOffset << "\n";
+                // DLOG(INFO) << "currentNodeIndex is " << currentNodeIndex << "\t the node status:\t" << leftInsect << "\t" << rightInsect;
+                // DLOG(INFO) << "To visit offset is  " << toVisitOffset << "\n";
             }
             currentNodeIndex = nodesToVisit[toVisitOffset--];
         }
@@ -326,6 +371,7 @@ private:
         {
             linearNode->primitivesOffset = node->firstPrimOffset;
             linearNode->nPrimitives = node->nPrimitives;
+            linearNode->pad[0] = node->is_only ? 0 : 1;
         }
         else
         {
@@ -399,6 +445,24 @@ private:
                 orderdata.push_back(pointInfo[i]);
             }
             node->InitLeaf(firstposition, nPrimitives, bounds);
+            node->is_only = true;
+            return node;
+        }
+        if (nPrimitives <= 10)
+        {
+            bounds.pMax.x += _voxel_length;
+            bounds.pMax.y += _voxel_length;
+            bounds.pMax.z += _voxel_length;
+            bounds.pMin.x -= _voxel_length;
+            bounds.pMin.y -= _voxel_length;
+            bounds.pMin.z -= _voxel_length;
+            uint firstposition = orderdata.size();
+            for (uint i = start; i < end; i++)
+            {
+                orderdata.push_back(pointInfo[i]);
+            }
+            node->InitLeaf(firstposition, nPrimitives, bounds);
+            node->is_only = false;
             return node;
         }
 
@@ -452,7 +516,7 @@ private:
 
         Bounds3<float> bounds(Point3<float>(xmin, ymin, zmin), Point3<float>(xmax, ymax, zmax));
         auto &&diagonal = (bounds.Diagonal());
-        if (diagonal.x < _minBoundLength && diagonal.y < _minBoundLength && diagonal.z < _minBoundLength)
+        if ((diagonal.x < _minBoundLength && diagonal.y < _minBoundLength && diagonal.z < _minBoundLength))
         {
             bounds.pMax.x += _voxel_length;
             bounds.pMax.y += _voxel_length;
@@ -466,12 +530,29 @@ private:
                 orderdata.push_back(info[i]);
             }
             node->InitLeaf(firstposition, end - start, bounds);
+            node->is_only = true;
+            return node;
+        }
+        if (end - start <= nBuckets)
+        {
+            bounds.pMax.x += _voxel_length;
+            bounds.pMax.y += _voxel_length;
+            bounds.pMax.z += _voxel_length;
+            bounds.pMin.x -= _voxel_length;
+            bounds.pMin.y -= _voxel_length;
+            bounds.pMin.z -= _voxel_length;
+            uint firstposition = orderdata.size();
+            for (uint i = start; i < end; i++)
+            {
+                orderdata.push_back(info[i]);
+            }
+            node->InitLeaf(firstposition, end - start, bounds);
+            node->is_only = false;
             return node;
         }
 
         uint dim = bounds.MaximumExtent();
 
-        constexpr int nBuckets = 14;
         BucketInfo buckets[nBuckets];
 
         float tobetween0to1 = 1.f / (max_tmp[dim] - min_tmp[dim]);
@@ -485,9 +566,9 @@ private:
             buckets[b].count++;
             buckets[b].bounds = Union(buckets[b].bounds, _pointcloud[info[i]]);
         }
-       
+
         float cost[nBuckets - 1];
-        for (int i = 0; i < nBuckets-1; i++)
+        for (int i = 0; i < nBuckets - 1; i++)
         {
             Bound3f b0, b1;
             int count0 = 0, count1 = 0;
@@ -519,7 +600,7 @@ private:
         auto p = std::partition(&(info[start]), &(info[end - 1]) + 1,
                                 [&](const auto &a)
                                 {
-                                    int b = nBuckets * (_pointcloud[a][dim] - min_tmp[dim])*tobetween0to1 ;
+                                    int b = nBuckets * (_pointcloud[a][dim] - min_tmp[dim]) * tobetween0to1;
                                     if (b == nBuckets)
                                         b--;
                                     return b <= minCostSplitBucket;

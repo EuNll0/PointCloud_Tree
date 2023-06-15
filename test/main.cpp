@@ -76,7 +76,7 @@ int main(int argc, char *argv[])
     FLAGS_colorlogtostderr = true;
 
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
-    pcl::io::loadPCDFile<pcl::PointXYZRGB>("../rabbit.pcd", *cloud);
+    pcl::io::loadPCDFile<pcl::PointXYZRGB>("/home/eunll0/Desktop/work/0421/rabbit.pcd", *cloud);
     // pcl::io::loadPCDFile<pcl::PointXYZ>("/home/bay/Desktop/work/map.pcd", *cloud);
 
 #ifdef _pclshow
@@ -99,44 +99,49 @@ int main(int argc, char *argv[])
 
     LOG(INFO) << "Point sizes : " << points.size();
     auto beforeTime = std::chrono::steady_clock::now();
-    BVH_ACC1 bvh(pts,0.1,0.2);
-    // BVH_ACC1 bvh(pts,0.1,0.2);
+    // BVH_ACC1 bvh(pts, 0.1, 0.2,BVH_ACC1::SplitMethod::EqualCounts);
+    // BVH_ACC1 bvh(pts,0.1,0.2,BVH_ACC1::SplitMethod::Middle,8);
+    BVH_ACC1 bvh(pts,0.05,0.09,BVH_ACC1::SplitMethod::SAH,8);
     auto afterTime = std::chrono::steady_clock::now();
     double duration_millsecond = std::chrono::duration<double, std::milli>(afterTime - beforeTime).count();
     LOG(INFO) << "The time to build tree :" << duration_millsecond;
 
     vector<Bound3f> ret;
 
-    pcl::PointXYZ o(1, 7, -2);
+    pcl::PointXYZ o(1, 2, 3);
 
-    Point3f oo(o.x, o.y, o.z), dd(-3, 2, 5);
+    Point3f oo(o.x, o.y, o.z), dd(-3, 2, -5);
     dd.normalize();
     Ray ray(oo, dd);
-    pcl::PointXYZ d = pcl::PointXYZ(o.x + 30 * dd.x, o.y + 30 * dd.y, o.z + 30 * dd.z);
+    pcl::PointXYZ d = pcl::PointXYZ(o.x + 5 * dd.x, o.y + 5 * dd.y, o.z + 5 * dd.z);
 
     beforeTime = std::chrono::steady_clock::now();
-    bvh.IntersectPB(ray, ret);
+    bvh.IntersectPB(ray, ret,-1);
     // bvh.GetBoundTree(2,ret);
     afterTime = std::chrono::steady_clock::now();
     duration_millsecond = std::chrono::duration<double, std::milli>(afterTime - beforeTime).count();
     LOG(INFO) << "Search block: " << ret.size();
     LOG(INFO) << "The time to search tree :" << duration_millsecond;
 
+    // bvh.GetBoundTree(2,ret);
+
 #ifdef _pclshow
     vector<uint> rett;
     vector<uint> px;
-    bvh.IntersectP(ray, rett, -1);
-    for (int i = 0; i < rett.size(); i++)
-    {
-        bvh.GetPointsFromNode(rett[i], px);
-    }
-    DLOG(INFO) << rett.size();
-    for (uint i = 0; i < px.size(); i++)
-    {
-        cloud->points[px[i]].r = 253;
-        cloud->points[px[i]].g = 2;
-        cloud->points[px[i]].b = 2;
 
+    beforeTime = std::chrono::steady_clock::now();
+    bvh.IntersectP(ray, rett, -1);
+    afterTime = std::chrono::steady_clock::now();
+    duration_millsecond = std::chrono::duration<double, std::milli>(afterTime - beforeTime).count();
+    LOG(INFO) << "The time to search tree :" << duration_millsecond<<"\t"<<rett.size();
+
+  
+    DLOG(INFO) << rett.size();
+    for (uint i = 0; i < rett.size(); i++)
+    {
+        cloud->points[rett[i]].r = 253;
+        cloud->points[rett[i]].g = 2;
+        cloud->points[rett[i]].b = 2;
     }
 
     viewer->addSphere(o, 0.5);
@@ -150,3 +155,4 @@ int main(int argc, char *argv[])
     google::ShutdownGoogleLogging();
     return 0;
 }
+

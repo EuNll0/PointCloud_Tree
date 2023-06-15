@@ -91,7 +91,9 @@ int main()
 
     auto beforeTime = std::chrono::steady_clock::now();
     // BVH_ACC1 bvh(pts,0.1,0.5,BVH_ACC1::SplitMethod::EqualCounts);
-    BVH_ACC1 bvh(pts,0.01,0.02,BVH_ACC1::SplitMethod::EqualCounts);
+    BVH_ACC1 bvh(pts,0.01,0.02,BVH_ACC1::SplitMethod::SAH,1024);
+    // BVH_ACC1 bvh(pts,0.01,0.02,BVH_ACC1::SplitMethod::Middle,1024);
+    // BVH_ACC1 bvh(pts,0.01,0.02,BVH_ACC1::SplitMethod::EqualCounts,1024);
     auto afterTime = std::chrono::steady_clock::now();
     double duration_millsecond = std::chrono::duration<double, std::milli>(afterTime - beforeTime).count();
     LOG(INFO) << "The time to build tree :" << duration_millsecond;
@@ -105,7 +107,7 @@ int main()
 
     vector<Bound3f> ret;
     beforeTime = std::chrono::steady_clock::now();
-    bvh.IntersectPB(ray, ret);
+    bvh.IntersectPB(ray, ret,1);
     // bvh.GetBoundTree(2,ret);
     afterTime = std::chrono::steady_clock::now();
     duration_millsecond = std::chrono::duration<double, std::milli>(afterTime - beforeTime).count();
@@ -125,14 +127,10 @@ int main()
     duration_millsecond = std::chrono::duration<double, std::milli>(afterTime - beforeTime).count();
     LOG(INFO) << "The time of IntersectP :" << duration_millsecond;
 
-    for (int i = 0; i < rett.size(); i++)
-    {
-        bvh.GetPointsFromNode(rett[i], px);
-    }
     DLOG(INFO) << rett.size();
-    for (uint i = 0; i < px.size(); i++)
+    for (uint i = 0; i < rett.size(); i++)
     {
-        auto &node = bvh._pointcloud[px[i]];
+        auto &node = bvh._pointcloud[rett[i]];
         cloud_1->points.push_back(pcl::PointXYZRGB(node.x, node.y, node.z, 0, 250, 0));
     }
 
