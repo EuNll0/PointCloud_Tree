@@ -101,7 +101,7 @@ int main(int argc, char *argv[])
     auto beforeTime = std::chrono::steady_clock::now();
     // BVH_ACC1 bvh(pts, 0.1, 0.2,BVH_ACC1::SplitMethod::EqualCounts);
     // BVH_ACC1 bvh(pts,0.1,0.2,BVH_ACC1::SplitMethod::Middle,8);
-    BVH_ACC1 bvh(pts,0.05,0.09,BVH_ACC1::SplitMethod::SAH,8);
+    BVH_ACC1 bvh(pts,0.05,0.09,5,BVH_ACC1::SplitMethod::SAH,8);
     auto afterTime = std::chrono::steady_clock::now();
     double duration_millsecond = std::chrono::duration<double, std::milli>(afterTime - beforeTime).count();
     LOG(INFO) << "The time to build tree :" << duration_millsecond;
@@ -155,4 +155,3 @@ int main(int argc, char *argv[])
     google::ShutdownGoogleLogging();
     return 0;
 }
-
