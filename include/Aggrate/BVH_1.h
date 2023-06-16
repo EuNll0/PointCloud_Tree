@@ -63,7 +63,9 @@ public:
     };
     const double _voxel_length;
     const double _minBoundLength;
-    const int nBuckets = 14;
+    const uint nBuckets = 14;
+    const uint _minBoundNth = 14;
+
 
     const SplitMethod _method;
     LinearBVHNode *nodes = nullptr;
@@ -71,9 +73,10 @@ public:
     std::vector<uint> orderdata;
     uint totalNodes = 0;
 
-    BVH_ACC1(std::vector<Point3<float>> &pointcloud, double voxel_length = 0.5, double minBoundLength = 1,
+    BVH_ACC1(std::vector<Point3<float>> &pointcloud, double voxel_length = 0.5, double minBoundLength = 1,uint minBountNum = 14,
              SplitMethod method = SplitMethod::Middle, uint MemorySize = 128) : _pointcloud(pointcloud), _method(method),
-                                                                                _voxel_length(voxel_length / 2.), _minBoundLength(minBoundLength)
+                                                                                _voxel_length(voxel_length / 2.), _minBoundLength(minBoundLength),
+                                                                                _minBoundNth(minBountNum)
     {
         LOG(INFO) << "Begin to build the tree";
         MemoryArena area(MemorySize * 1024 * 1024);
@@ -450,7 +453,7 @@ private:
             node->is_only = true;
             return node;
         }
-        if (nPrimitives <= 10)
+        if (nPrimitives <= _minBoundNth)
         {
             bounds.pMax.x += _voxel_length;
             bounds.pMax.y += _voxel_length;
@@ -535,7 +538,7 @@ private:
             node->is_only = true;
             return node;
         }
-        if (end - start <= nBuckets)
+        if (end - start <= _minBoundNth)
         {
             bounds.pMax.x += _voxel_length;
             bounds.pMax.y += _voxel_length;
