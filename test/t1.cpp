@@ -90,10 +90,9 @@ int main()
     LOG(INFO) << "Point sizes : " << pts.size();
 
     auto beforeTime = std::chrono::steady_clock::now();
-    // BVH_ACC1 bvh(pts,0.1,0.5,BVH_ACC1::SplitMethod::EqualCounts);
-    BVH_ACC1 bvh(pts,0.01,0.02,BVH_ACC1::SplitMethod::SAH,1024);
-    // BVH_ACC1 bvh(pts,0.01,0.02,BVH_ACC1::SplitMethod::Middle,1024);
-    // BVH_ACC1 bvh(pts,0.01,0.02,BVH_ACC1::SplitMethod::EqualCounts,1024);
+    BVH_ACC1 bvh(pts,0.01,0.01,5,BVH_ACC1::SplitMethod::SAH,1024);
+    // BVH_ACC1 bvh(pts,0.005,0.03,BVH_ACC1::SplitMethod::EqualCounts,1024);
+    // BVH_ACC1 bvh(pts,0.005,0.01,BVH_ACC1::SplitMethod::SAH,1024);
     auto afterTime = std::chrono::steady_clock::now();
     double duration_millsecond = std::chrono::duration<double, std::milli>(afterTime - beforeTime).count();
     LOG(INFO) << "The time to build tree :" << duration_millsecond;
@@ -107,7 +106,7 @@ int main()
 
     vector<Bound3f> ret;
     beforeTime = std::chrono::steady_clock::now();
-    bvh.IntersectPB(ray, ret,1);
+    bvh.IntersectPB(ray, ret,-1);
     // bvh.GetBoundTree(2,ret);
     afterTime = std::chrono::steady_clock::now();
     duration_millsecond = std::chrono::duration<double, std::milli>(afterTime - beforeTime).count();
