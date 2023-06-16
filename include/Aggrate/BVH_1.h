@@ -157,6 +157,7 @@ public:
                     {
                         ret_pointIndex.push_back(orderdata[i + node->primitivesOffset]);
                     }
+                    block++;
                 }
                 if (block > 0)
                     currentdepth++;
@@ -246,6 +247,7 @@ public:
                 else
                 {
                     ret_bounds.push_back(node->bounds);
+                    block++;
                 }
                 if (block > 0)
                     currentdepth++;
