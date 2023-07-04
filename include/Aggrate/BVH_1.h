@@ -91,7 +91,7 @@ public:
             pointInfo[i] = i;
         }
 
-        orderdata.resize(pointInfo.size());
+        orderdata.reserve(pointInfo.size());
         uint offset = 0;
         if (method == SplitMethod::SAH)
         {
