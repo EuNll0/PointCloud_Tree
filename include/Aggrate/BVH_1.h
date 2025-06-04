@@ -6,6 +6,9 @@
 #include <glog/logging.h>
 #include <sstream>
 #include <string>
+#include <algorithm>
+#include <thread>
+#include <memory>
 
 struct BucketInfo
 {
@@ -74,45 +77,42 @@ public:
     uint totalNodes = 0;
 
     BVH_ACC1(std::vector<Point3<float>> &pointcloud, double voxel_length = 0.5, double minBoundLength = 1,uint minBountNum = 14,
-             SplitMethod method = SplitMethod::Middle, uint MemorySize = 128) : _pointcloud(pointcloud), _method(method),
+             SplitMethod method = SplitMethod::Middle, uint MemorySize = 128, uint numThreads = 1) : _pointcloud(pointcloud), _method(method),
                                                                                 _voxel_length(voxel_length / 2.), _minBoundLength(minBoundLength),
                                                                                 _minBoundNth(minBountNum)
     {
         LOG(INFO) << "Begin to build the tree";
-        MemoryArena area(MemorySize * 1024 * 1024);
         BVHBuildNode *root;
-        std::vector<uint> pointInfo;
-        pointInfo.resize(_pointcloud.size());
-        // uint *p = new uint[_pointcloud.size()];
-
-        // #   pragma omp parallel for
-        for (uint i = 0; i < pointcloud.size(); i++)
-        {
-            pointInfo[i] = i;
-        }
-
-        orderdata.reserve(pointInfo.size());
         uint offset = 0;
-        if (method == SplitMethod::SAH)
+        if (numThreads <= 1)
         {
-            root = recursiveBuild_SAH(area, 0, pointInfo.size(), pointInfo, &totalNodes);
+            MemoryArena area(MemorySize * 1024 * 1024);
+            std::vector<uint> pointInfo(_pointcloud.size());
+            for (uint i = 0; i < pointcloud.size(); i++)
+            {
+                pointInfo[i] = i;
+            }
+            orderdata.reserve(pointInfo.size());
+            if (method == SplitMethod::SAH)
+            {
+                root = recursiveBuild_SAH(area, 0, pointInfo.size(), pointInfo, &totalNodes, orderdata);
+            }
+            else
+            {
+                root = recursiveBuild(area, 0, pointInfo.size(), pointInfo, &totalNodes, orderdata);
+            }
+            nodes = AllocAligned<LinearBVHNode>(totalNodes);
+            flattenBVHTree(root, &offset);
+            DCHECK_EQ(totalNodes, offset);
         }
         else
         {
-            root = recursiveBuild(area, 0, pointInfo.size(), pointInfo, &totalNodes);
+            buildParallel(numThreads, MemorySize, &root);
+            nodes = AllocAligned<LinearBVHNode>(totalNodes);
+            flattenBVHTree(root, &offset);
+            DCHECK_EQ(totalNodes, offset);
         }
-        nodes = AllocAligned<LinearBVHNode>(totalNodes);
-        flattenBVHTree(root, &offset);
-        char output[1024];
-        sprintf(output, "BVH created with %u nodes for %lu "
-                        "points (%.2f MB), arena allocated %.2f MB",
-                totalNodes, pointInfo.size(),
-                float(totalNodes * sizeof(LinearBVHNode)) /
-                    (1024.f * 1024.f),
-                float(area.TotalAllocated()) /
-                    (1024.f * 1024.f));
-        LOG(INFO) << std::string(output);
-        // delete p;
+        LOG(INFO) << "BVH created with " << totalNodes << " nodes";
         DCHECK_EQ(totalNodes, offset);
     }
 
@@ -389,7 +389,7 @@ private:
     }
 
     BVHBuildNode *recursiveBuild(MemoryArena &area, uint start, uint end, std::vector<uint> &pointInfo,
-                                 uint *tatalnodes)
+                                 uint *tatalnodes, std::vector<uint> &orderVec)
     {
         // DCHECK((*tatalnodes) < alloc_all_memory) << "NOT ENOUGH MEMORY!!!";
         BVHBuildNode *node = area.Alloc<BVHBuildNode>();
@@ -444,10 +444,10 @@ private:
             bounds.pMin.x -= _voxel_length;
             bounds.pMin.y -= _voxel_length;
             bounds.pMin.z -= _voxel_length;
-            uint firstposition = orderdata.size();
+            uint firstposition = orderVec.size();
             for (uint i = start; i < end; i++)
             {
-                orderdata.push_back(pointInfo[i]);
+                orderVec.push_back(pointInfo[i]);
             }
             node->InitLeaf(firstposition, nPrimitives, bounds);
             node->is_only = true;
@@ -461,10 +461,10 @@ private:
             bounds.pMin.x -= _voxel_length;
             bounds.pMin.y -= _voxel_length;
             bounds.pMin.z -= _voxel_length;
-            uint firstposition = orderdata.size();
+            uint firstposition = orderVec.size();
             for (uint i = start; i < end; i++)
             {
-                orderdata.push_back(pointInfo[i]);
+                orderVec.push_back(pointInfo[i]);
             }
             node->InitLeaf(firstposition, nPrimitives, bounds);
             node->is_only = false;
@@ -492,12 +492,12 @@ private:
         }
         }
         node->InitInterior(dim,
-                           recursiveBuild(area, start, mid, pointInfo, tatalnodes),
-                           recursiveBuild(area, mid, end, pointInfo, tatalnodes));
+                           recursiveBuild(area, start, mid, pointInfo, tatalnodes, orderVec),
+                           recursiveBuild(area, mid, end, pointInfo, tatalnodes, orderVec));
         return node;
     }
 
-    BVHBuildNode *recursiveBuild_SAH(MemoryArena &area, uint start, uint end, std::vector<uint> &info, uint *tatalnodes)
+    BVHBuildNode *recursiveBuild_SAH(MemoryArena &area, uint start, uint end, std::vector<uint> &info, uint *tatalnodes, std::vector<uint> &orderVec)
     {
         BVHBuildNode *node = area.Alloc<BVHBuildNode>();
         DCHECK(end > start);
@@ -529,10 +529,10 @@ private:
             bounds.pMin.x -= _voxel_length;
             bounds.pMin.y -= _voxel_length;
             bounds.pMin.z -= _voxel_length;
-            uint firstposition = orderdata.size();
+            uint firstposition = orderVec.size();
             for (uint i = start; i < end; i++)
             {
-                orderdata.push_back(info[i]);
+                orderVec.push_back(info[i]);
             }
             node->InitLeaf(firstposition, end - start, bounds);
             node->is_only = true;
@@ -546,10 +546,10 @@ private:
             bounds.pMin.x -= _voxel_length;
             bounds.pMin.y -= _voxel_length;
             bounds.pMin.z -= _voxel_length;
-            uint firstposition = orderdata.size();
+            uint firstposition = orderVec.size();
             for (uint i = start; i < end; i++)
             {
-                orderdata.push_back(info[i]);
+                orderVec.push_back(info[i]);
             }
             node->InitLeaf(firstposition, end - start, bounds);
             node->is_only = false;
@@ -614,10 +614,148 @@ private:
         int mid = p - &(info[0]);
         // LOG(INFO) << "START MID END IS " << start << "\t" << mid << "\t" << end << "\n";
         node->InitInterior(dim,
-                           recursiveBuild_SAH(area, mid, end, info, tatalnodes),
-                           recursiveBuild_SAH(area, start, mid, info, tatalnodes));
+                           recursiveBuild_SAH(area, mid, end, info, tatalnodes, orderVec),
+                           recursiveBuild_SAH(area, start, mid, info, tatalnodes, orderVec));
         return node;
     }
-};
 
+    uint64_t calculateMortonCode(const Point3f &point, const Point3f &globalPMin, const Point3f &globalPMax, int bitsPerDim)
+    {
+        auto clamp01 = [](double v) { return std::max(0.0, std::min(1.0, v)); };
+        double nx = clamp01((point.x - globalPMin.x) / (globalPMax.x - globalPMin.x));
+        double ny = clamp01((point.y - globalPMin.y) / (globalPMax.y - globalPMin.y));
+        double nz = clamp01((point.z - globalPMin.z) / (globalPMax.z - globalPMin.z));
+        uint32_t scale = (1u << bitsPerDim) - 1u;
+        uint32_t ix = uint32_t(nx * scale);
+        uint32_t iy = uint32_t(ny * scale);
+        uint32_t iz = uint32_t(nz * scale);
+        auto expandBits = [](uint32_t v) {
+            uint64_t x = v & 0x1fffff;
+            x = (x | (x << 32)) & 0x1f00000000ffff;
+            x = (x | (x << 16)) & 0x1f0000ff0000ff;
+            x = (x | (x << 8)) & 0x100f00f00f00f00f;
+            x = (x | (x << 4)) & 0x10c30c30c30c30c3;
+            x = (x | (x << 2)) & 0x1249249249249249;
+            return x;
+        };
+        uint64_t xx = expandBits(ix);
+        uint64_t yy = expandBits(iy) << 1;
+        uint64_t zz = expandBits(iz) << 2;
+        return xx | yy | zz;
+    }
+
+    void adjustLeafOffsets(BVHBuildNode *node, uint32_t offset)
+    {
+        if (!node)
+            return;
+        if (node->nPrimitives > 0)
+        {
+            node->firstPrimOffset += offset;
+        }
+        else
+        {
+            adjustLeafOffsets(node->children[0], offset);
+            adjustLeafOffsets(node->children[1], offset);
+        }
+    }
+
+    BVHBuildNode *buildTopLevel(std::vector<BVHBuildNode *> &roots, MemoryArena &area, uint *topNodes)
+    {
+        if (roots.empty())
+            return nullptr;
+        while (roots.size() > 1)
+        {
+            std::vector<BVHBuildNode *> next;
+            for (size_t i = 0; i < roots.size(); i += 2)
+            {
+                if (i + 1 >= roots.size())
+                {
+                    next.push_back(roots[i]);
+                }
+                else
+                {
+                    BVHBuildNode *parent = area.Alloc<BVHBuildNode>();
+                    (*topNodes)++;
+                    parent->InitInterior(Union(roots[i]->bounds, roots[i + 1]->bounds).MaximumExtent(), roots[i], roots[i + 1]);
+                    next.push_back(parent);
+                }
+            }
+            roots.swap(next);
+        }
+        return roots.front();
+    }
+
+    void buildParallel(uint numThreads, uint MemorySize, BVHBuildNode **outRoot)
+    {
+        const int bits = 21;
+        Point3f gmin, gmax;
+        gmin = Point3f(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
+        gmax = Point3f(std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest());
+        for (auto &p : _pointcloud)
+        {
+            gmin = Min(gmin, p);
+            gmax = Max(gmax, p);
+        }
+
+        std::vector<std::pair<uint64_t, uint32_t>> morton(_pointcloud.size());
+        for (uint32_t i = 0; i < _pointcloud.size(); ++i)
+        {
+            morton[i].first = calculateMortonCode(_pointcloud[i], gmin, gmax, bits);
+            morton[i].second = i;
+        }
+        std::sort(morton.begin(), morton.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
+        std::vector<uint32_t> sorted(morton.size());
+        for (size_t i = 0; i < morton.size(); ++i)
+            sorted[i] = morton[i].second;
+
+        size_t blockSize = (sorted.size() + numThreads - 1) / numThreads;
+        std::vector<std::unique_ptr<MemoryArena>> arenas;
+        arenas.reserve(numThreads);
+        for (uint i = 0; i < numThreads; ++i)
+            arenas.emplace_back(std::make_unique<MemoryArena>((MemorySize * 1024 * 1024) / numThreads));
+        MemoryArena topArena((MemorySize * 1024 * 1024) / numThreads);
+
+        struct LocalResult
+        {
+            BVHBuildNode *root = nullptr;
+            std::vector<uint> order;
+            uint nodes = 0;
+        };
+        std::vector<LocalResult> results(numThreads);
+        std::vector<std::thread> threads;
+        for (uint t = 0; t < numThreads; ++t)
+        {
+            size_t begin = t * blockSize;
+            size_t end = std::min(sorted.size(), begin + blockSize);
+            results[t].order.reserve(end - begin);
+            std::vector<uint> subset(sorted.begin() + begin, sorted.begin() + end);
+            threads.emplace_back([&, t, subset]() mutable {
+                if (_method == SplitMethod::SAH)
+                    results[t].root = recursiveBuild_SAH(*arenas[t], 0, subset.size(), const_cast<std::vector<uint> &>(subset), &results[t].nodes, results[t].order);
+                else
+                    results[t].root = recursiveBuild(*arenas[t], 0, subset.size(), const_cast<std::vector<uint> &>(subset), &results[t].nodes, results[t].order);
+            });
+        }
+        for (auto &th : threads)
+            th.join();
+
+        uint32_t base = 0;
+        std::vector<BVHBuildNode *> roots;
+        totalNodes = 0;
+        for (auto &r : results)
+        {
+            adjustLeafOffsets(r.root, base);
+            base += r.order.size();
+            orderdata.insert(orderdata.end(), r.order.begin(), r.order.end());
+            totalNodes += r.nodes;
+            roots.push_back(r.root);
+        }
+
+        uint topNodes = 0;
+        BVHBuildNode *topRoot = buildTopLevel(roots, topArena, &topNodes);
+        totalNodes += topNodes;
+        *outRoot = topRoot;
+    }
+
+};
 #endif
