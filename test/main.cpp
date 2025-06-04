@@ -7,7 +7,8 @@
 #include <glog/logging.h>
 #include <chrono>
 
-#define _pclshow
+// Visualization requires an X server. Disable by default for headless testing.
+// #define _pclshow
 
 #ifdef _pclshow
 template <typename T>
@@ -75,8 +76,13 @@ int main(int argc, char *argv[])
     // FLAGS_log_dir = "./log";
     FLAGS_colorlogtostderr = true;
 
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
-    pcl::io::loadPCDFile<pcl::PointXYZRGB>("/home/eunll0/Desktop/work/0421/rabbit.pcd", *cloud);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
+    std::string pcd_path = "../rabbit.pcd";
+    if (pcl::io::loadPCDFile<pcl::PointXYZ>(pcd_path, *cloud) != 0)
+    {
+        LOG(ERROR) << "Failed to load PCD file: " << pcd_path;
+        return 1;
+    }
     // pcl::io::loadPCDFile<pcl::PointXYZ>("/home/bay/Desktop/work/map.pcd", *cloud);
 
 #ifdef _pclshow
@@ -90,9 +96,6 @@ int main(int argc, char *argv[])
     {
         p.x *= 100;
         p.y *= 100;
-        p.r = 254;
-        p.g = 254;
-        p.b = 254;
         p.z *= 100;
         pts.push_back(Point3f(p.x, p.y, p.z));
     }
